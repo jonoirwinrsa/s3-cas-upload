@@ -19,8 +19,9 @@ make down
 MinIO's images left Docker Hub in September 2026 and the quay.io replacement needs a licence, so
 `make up` pulls `cgr.dev/chainguard/minio`.
 
-`FILES=5000 MB=500 make tree` sets the shape of the tree. `RTT=40ms make bench` adds that delay to every
-request the client and the server make. `CHUNK=8388608` sets the size above which files are split.
+`FILES=5000 MB=500 make tree` sets the shape of the tree. `RTT=40ms make bench` adds that delay to
+every request the client and the server make. `CHUNK=8388608` sets the size above which files are
+split.
 
 ## Method
 
