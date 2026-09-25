@@ -114,11 +114,10 @@ duplicates, 8 MiB chunks.
 The cold upload moved 474 MB of the 527 MB it read. The 53 MB difference is the duplicate files,
 which hash to digests another file already covered.
 
-Changing one file moved 1,044,399 bytes in two PUTs, and only 19,427 of those are the file. The
-rest is the manifest, which lists all 5000 entries and is rewritten whole whenever anything
-changes. At this tree size the manifest is the floor on a warm upload, and it cost fifty times the
-edit that triggered it. The delete column is that floor on its own: one PUT, 1,024,766 bytes, no
-files hashed, no space reclaimed.
+Changing one file moved 1,044,399 bytes in two PUTs: 19,427 for the file and 1,024,972 for the
+manifest, which lists all 5000 entries and is rewritten whole whenever anything changes. At this
+tree size the manifest sets the floor on a warm upload. The delete column is that floor on its
+own: one PUT, 1,024,766 bytes, no files hashed, no space reclaimed.
 
 The two warm runs read 19 KB and 527 MB and upload the same amount, so the cache saves reading
 and not uploading.
