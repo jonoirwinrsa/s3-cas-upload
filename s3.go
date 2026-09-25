@@ -165,3 +165,39 @@ func (s *s3) listPrefix(prefix string) (map[string]bool, error) {
 		token = r.NextContinuationToken
 	}
 }
+
+func (s *s3) del(key string) error {
+	resp, b, err := s.do("DELETE", key, nil, nil, emptyHash, nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode >= 400 && resp.StatusCode != 404 {
+		return fmt.Errorf("delete %s: %s: %s", key, resp.Status, b)
+	}
+	return nil
+}
+
+// empty removes every blob, so a cold run starts from nothing.
+func (s *s3) empty(prefix string) (int, error) {
+	have, err := s.listPrefix(prefix)
+	if err != nil {
+		return 0, err
+	}
+	for k := range have {
+		if err := s.del(k); err != nil {
+			return 0, err
+		}
+	}
+	return len(have), nil
+}
+
+func (s *s3) get(key string) ([]byte, error) {
+	resp, b, err := s.do("GET", key, nil, nil, emptyHash, nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("get %s: %s", key, resp.Status)
+	}
+	return b, nil
+}

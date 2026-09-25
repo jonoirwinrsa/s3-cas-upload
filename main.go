@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"regexp"
@@ -14,28 +12,6 @@ import (
 )
 
 var codeRE = regexp.MustCompile(`<Code>([^<]+)</Code>`)
-
-// putSigned is what a credential-less client does: PUT the bytes to the URL it
-// was given, with the checksum header it was told to send.
-func putSigned(url string, checksum string, body []byte) (int, string) {
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(body))
-	if err != nil {
-		return 0, err.Error()
-	}
-	if checksum != "" {
-		req.Header.Set("X-Amz-Checksum-Sha256", checksum)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return 0, err.Error()
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	if m := codeRE.FindSubmatch(b); m != nil {
-		return resp.StatusCode, string(m[1])
-	}
-	return resp.StatusCode, ""
-}
 
 func probe(endpoint, bucket string, c creds) {
 	body := []byte("presigned upload probe\n")
@@ -52,26 +28,26 @@ func probe(endpoint, bucket string, c creds) {
 	report := func(name string, code int, errCode string) {
 		fmt.Printf("%-44s %d %s\n", name, code, errCode)
 	}
-	code, ec := putSigned(url, checksum, body)
+	code, ec, _ := putSigned(http.DefaultClient, url, checksum, body)
 	report("correct bytes", code, ec)
 
-	code, ec = putSigned(url, checksum, []byte("different bytes entirely\n"))
+	code, ec, _ = putSigned(http.DefaultClient, url, checksum, []byte("different bytes entirely\n"))
 	report("wrong bytes, signed checksum kept", code, ec)
 
-	code, ec = putSigned(url, "", body)
+	code, ec, _ = putSigned(http.DefaultClient, url, "", body)
 	report("checksum header omitted, correct bytes", code, ec)
 
 	evil := []byte("bytes that are not the digest\n")
-	code, ec = putSigned(url, "", evil)
+	code, ec, _ = putSigned(http.DefaultClient, url, "", evil)
 	report("checksum header omitted, WRONG bytes", code, ec)
 
 	other := sha256.Sum256([]byte("x"))
-	code, ec = putSigned(url, hex.EncodeToString(other[:]), body)
+	code, ec, _ = putSigned(http.DefaultClient, url, hex.EncodeToString(other[:]), body)
 	report("checksum header replaced", code, ec)
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: s3-cas-upload serve|probe [flags]")
+	fmt.Fprintln(os.Stderr, "usage: cas serve|upload|verify|probe|reset [flags]")
 	os.Exit(2)
 }
 
@@ -89,9 +65,32 @@ func main() {
 	region := flag.String("region", "us-east-1", "region")
 	addr := flag.String("addr", ":8080", "signing server address")
 	strategy := flag.String("strategy", "head", "existence check: head or list")
+	root := flag.String("root", "tree", "directory to upload")
+	signer := flag.String("server", "http://localhost:8080", "signing server")
+	chunk := flag.Int64("chunk", 8<<20, "split files above this size")
+	cachePath := flag.String("cache", ".cas-cache.json", "hash cache file")
+	nocache := flag.Bool("nocache", false, "ignore the hash cache")
+	manifestID := flag.String("manifest", "", "manifest digest to verify")
 	flag.Parse()
 
 	c := creds{*key, *secret, *region}
+	if cmd == "upload" {
+		cl := &client{*signer, *chunk, loadCache(*cachePath, !*nocache), http.DefaultClient}
+		id, st, err := cl.Upload(*root)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Printf("manifest   %s\n", id)
+		fmt.Printf("files      %d (%d hashed, %d from cache)\n", st.Files, st.Hashed, cl.cache.Hits)
+		fmt.Printf("chunks     %d (%d missing)\n", st.Chunks, st.Missing)
+		fmt.Printf("read       %d bytes\n", st.BytesRead)
+		fmt.Printf("uploaded   %d bytes in %d PUTs\n", st.BytesUp, st.Puts)
+		fmt.Printf("checks     %d\n", st.Checks)
+		fmt.Printf("wall       %s\n", st.Wall.Round(time.Millisecond))
+		return
+	}
+
 	store := newS3(*endpoint, *bucket, *key, *secret, *region, 0)
 	if err := store.makeBucket(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -99,6 +98,18 @@ func main() {
 	}
 
 	switch cmd {
+	case "reset":
+		n, err := store.empty(blobPrefix)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Printf("deleted %d blobs\n", n)
+	case "verify":
+		if err := verify(store, *manifestID); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "serve":
 		sv := &server{store, c, *endpoint, *bucket, *strategy, 15 * time.Minute}
 		fmt.Println("signing server on", *addr, "strategy", *strategy)

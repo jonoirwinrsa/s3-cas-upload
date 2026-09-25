@@ -27,11 +27,14 @@ const blobPrefix = "blobs/sha256/"
 
 func blobKey(digest string) string { return blobPrefix + digest }
 
-func (sv *server) missing(digests []string) ([]string, error) {
+// missing returns the digests the store does not have, and how many S3
+// requests that answer cost.
+func (sv *server) missing(digests []string) ([]string, int, error) {
 	if sv.strategy == "list" {
+		before := sv.s3.lists.Load()
 		have, err := sv.s3.listPrefix(blobPrefix)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		var out []string
 		for _, d := range digests {
@@ -39,7 +42,7 @@ func (sv *server) missing(digests []string) ([]string, error) {
 				out = append(out, d)
 			}
 		}
-		return out, nil
+		return out, int(sv.s3.lists.Load() - before), nil
 	}
 
 	var (
@@ -67,7 +70,7 @@ func (sv *server) missing(digests []string) ([]string, error) {
 		}()
 	}
 	wg.Wait()
-	return out, ferr
+	return out, len(digests), ferr
 }
 
 func (sv *server) handleMissing(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +81,7 @@ func (sv *server) handleMissing(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	need, err := sv.missing(req.Digests)
+	need, checks, err := sv.missing(req.Digests)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -94,7 +97,7 @@ func (sv *server) handleMissing(w http.ResponseWriter, r *http.Request) {
 		upload[d] = target{u, sum}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"upload": upload})
+	json.NewEncoder(w).Encode(map[string]any{"upload": upload, "checks": checks})
 }
 
 func (sv *server) serve(addr string) error {
