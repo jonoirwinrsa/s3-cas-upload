@@ -2,3 +2,4 @@ out/
 .idea/
 results/
 tree/
+.cas-cache.json
