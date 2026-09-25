@@ -47,7 +47,7 @@ func probe(endpoint, bucket string, c creds) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: cas serve|upload|verify|probe|reset [flags]")
+	fmt.Fprintln(os.Stderr, "usage: cas serve|upload|tree|bench|crossover|verify|probe|reset [flags]")
 	os.Exit(2)
 }
 
@@ -71,9 +71,20 @@ func main() {
 	cachePath := flag.String("cache", ".cas-cache.json", "hash cache file")
 	nocache := flag.Bool("nocache", false, "ignore the hash cache")
 	manifestID := flag.String("manifest", "", "manifest digest to verify")
+	files := flag.Int("files", 5000, "files in the generated tree")
+	mb := flag.Int64("mb", 500, "approximate tree size in MB")
+	dup := flag.Float64("dup", 0.1, "share of files that duplicate an earlier one")
+	seed := flag.Int64("seed", 1, "tree seed")
 	flag.Parse()
 
 	c := creds{*key, *secret, *region}
+	if cmd == "tree" {
+		if err := genTree(*root, *files, *mb<<20, *dup, *seed); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if cmd == "upload" {
 		cl := &client{*signer, *chunk, loadCache(*cachePath, !*nocache), http.DefaultClient}
 		id, st, err := cl.Upload(*root)
@@ -107,6 +118,16 @@ func main() {
 		fmt.Printf("deleted %d blobs\n", n)
 	case "verify":
 		if err := verify(store, *manifestID); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "bench":
+		if err := benchmark(store, *signer, *root, *cachePath, *chunk, *seed); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "crossover":
+		if err := crossover(store, *signer, []int{10, 50, 100, 500, 1000, 2000, 5000}); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

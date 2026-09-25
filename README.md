@@ -29,10 +29,11 @@ answers the existence check, and returns one presigned PUT per missing digest.
 
 `make bench` runs:
 
-1. Generate the tree: a set file count, a mixed size distribution, some duplicates.
+1. Generate the tree: a set file count, a heavy-tailed size distribution, some duplicates.
 2. Empty the bucket and the hash cache.
 3. Cold upload. Hash every file, ask which digests are missing, upload those, write the manifest.
-4. Touch one file, upload again. The cache is in place, so unchanged files are not read.
+4. Rewrite one file at the same length, upload again. The cache is in place, so the other
+   files are not read.
 5. Drop the cache, upload again. Everything is rehashed, and only the server's answer saves work.
 6. Delete one file, upload again. Only the manifest changes.
 7. Report bytes moved, requests made, files hashed and wall clock for each upload.
@@ -97,4 +98,41 @@ Content-defined chunking would avoid that and is not implemented.
 
 ## Results
 
-Not measured yet.
+MinIO and the signing server on one laptop, 5000 files totalling 513 MB of which 505 are
+duplicates, 8 MiB chunks.
+
+| | cold | changed, cached | changed, rehashed | deleted |
+|---|---|---|---|---|
+| bytes uploaded | 474,371,615 | 1,044,399 | 0 | 1,024,766 |
+| PUT requests | 4,496 | 2 | 0 | 1 |
+| existence checks | 4,496 | 4,496 | 4,496 | 4,495 |
+| files hashed | 5,000 | 1 | 5,000 | 0 |
+| bytes read | 526,658,960 | 19,427 | 526,658,960 | 0 |
+| wall clock | 9.09s | 643ms | 1.288s | 1.001s |
+
+The cold upload moved 474 MB of the 527 MB it read. The 53 MB difference is the duplicate files,
+which hash to digests another file already covered.
+
+Changing one file moved 1,044,399 bytes in two PUTs, and only 19,427 of those are the file. The
+rest is the manifest, which lists all 5000 entries and is rewritten whole whenever anything
+changes. At this tree size the manifest is the floor on a warm upload and costs fifty times the
+edit that triggered it. Deleting a file shows the same floor with nothing else in it: one PUT,
+1,024,766 bytes, no files hashed, and no space reclaimed.
+
+The two warm runs differ by four orders of magnitude in bytes read, 19 KB against 527 MB, and
+upload the same amount. The cache buys reads and nothing else.
+
+### Existence check
+
+| digests asked | head | list |
+|---|---|---|
+| 10 | 3ms | 132ms |
+| 50 | 7ms | 133ms |
+| 100 | 13ms | 131ms |
+| 500 | 50ms | 131ms |
+| 1000 | 104ms | 143ms |
+| 2000 | 192ms | 130ms |
+
+Against a bucket holding 4499 blobs. `list` is flat in the number of digests asked, since it pages
+the whole prefix either way, and `head` is flat in the size of the bucket. They cross between 1000
+and 2000 digests, at roughly a third of the objects stored.

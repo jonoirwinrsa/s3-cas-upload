@@ -29,8 +29,8 @@ func blobKey(digest string) string { return blobPrefix + digest }
 
 // missing returns the digests the store does not have, and how many S3
 // requests that answer cost.
-func (sv *server) missing(digests []string) ([]string, int, error) {
-	if sv.strategy == "list" {
+func (sv *server) missing(digests []string, strategy string) ([]string, int, error) {
+	if strategy == "list" {
 		before := sv.s3.lists.Load()
 		have, err := sv.s3.listPrefix(blobPrefix)
 		if err != nil {
@@ -81,7 +81,11 @@ func (sv *server) handleMissing(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	need, checks, err := sv.missing(req.Digests)
+	strategy := sv.strategy
+	if q := r.URL.Query().Get("strategy"); q != "" {
+		strategy = q
+	}
+	need, checks, err := sv.missing(req.Digests, strategy)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
