@@ -75,6 +75,7 @@ func main() {
 	mb := flag.Int64("mb", 500, "approximate tree size in MB")
 	dup := flag.Float64("dup", 0.1, "share of files that duplicate an earlier one")
 	seed := flag.Int64("seed", 1, "tree seed")
+	rtt := flag.Duration("rtt", 0, "delay added to every request, for a non-loopback network")
 	flag.Parse()
 
 	c := creds{*key, *secret, *region}
@@ -86,7 +87,7 @@ func main() {
 		return
 	}
 	if cmd == "upload" {
-		cl := &client{*signer, *chunk, loadCache(*cachePath, !*nocache), http.DefaultClient}
+		cl := &client{*signer, *chunk, loadCache(*cachePath, !*nocache), httpWithRTT(*rtt)}
 		id, st, err := cl.Upload(*root)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -102,7 +103,7 @@ func main() {
 		return
 	}
 
-	store := newS3(*endpoint, *bucket, *key, *secret, *region, 0)
+	store := newS3(*endpoint, *bucket, *key, *secret, *region, *rtt)
 	if err := store.makeBucket(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -122,7 +123,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "bench":
-		if err := benchmark(store, *signer, *root, *cachePath, *chunk, *seed); err != nil {
+		if err := benchmark(store, *signer, *root, *cachePath, *chunk, *seed, httpWithRTT(*rtt)); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

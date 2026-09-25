@@ -17,7 +17,7 @@ type row struct {
 	hits int
 }
 
-func benchmark(store *s3, signer, root, cachePath string, chunk int64, seed int64) error {
+func benchmark(store *s3, signer, root, cachePath string, chunk, seed int64, hc *http.Client) error {
 	if _, err := store.empty(blobPrefix); err != nil {
 		return err
 	}
@@ -25,7 +25,7 @@ func benchmark(store *s3, signer, root, cachePath string, chunk int64, seed int6
 
 	var rows []row
 	run := func(name string, useCache bool) error {
-		cl := &client{signer, chunk, loadCache(cachePath, useCache), http.DefaultClient}
+		cl := &client{signer, chunk, loadCache(cachePath, useCache), hc}
 		_, st, err := cl.Upload(root)
 		if err != nil {
 			return err
@@ -43,8 +43,8 @@ func benchmark(store *s3, signer, root, cachePath string, chunk int64, seed int6
 		return err
 	}
 
-	// Rewrite one file at the same length. Its mtime moves, so the cache sees
-	// the change; its contents move, so the store has to take the bytes.
+	// Same length, new contents: the cache sees the mtime move and the store
+	// has to take the bytes.
 	info, err := os.Stat(picks[0])
 	if err != nil {
 		return err
@@ -106,9 +106,8 @@ func printTable(rows []row) {
 	metric("wall clock", func(r row) string { return r.st.Wall.Round(time.Millisecond).String() })
 }
 
-// crossover times the two existence-check strategies against the same bucket,
-// asking about digests that are all present so nothing is signed and the
-// measurement is the check itself.
+// crossover asks only about digests already present, so no URLs get signed and
+// the timing is the existence check alone.
 func crossover(store *s3, signer string, counts []int) error {
 	have, err := store.listPrefix(blobPrefix)
 	if err != nil {

@@ -6,8 +6,8 @@ import (
 	"sync"
 )
 
-// key identifies a file cheaply. mtime has a resolution limit, so a file
-// rewritten to the same length inside one tick reads as unchanged.
+// mtime has a resolution limit, so a file rewritten to the same length inside
+// one tick reads as unchanged.
 type key struct {
 	Size    int64  `json:"size"`
 	MtimeNs int64  `json:"mtime_ns"`

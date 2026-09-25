@@ -80,9 +80,9 @@ func (s *s3) makeBucket() error {
 	return nil
 }
 
-// put stores one blob. digest is the hex SHA-256 of body, and it goes out twice:
-// as the SigV4 payload hash, and base64-encoded as x-amz-checksum-sha256 so the
-// server recomputes it and refuses bytes that do not match the key.
+// put sends digest twice: as the SigV4 payload hash, and base64 in
+// x-amz-checksum-sha256. S3 checks that header against the body, never against
+// the key, so this alone does not tie bytes to the name they are stored under.
 func (s *s3) put(key, digest string, body []byte) error {
 	return s.putAs(key, digest, digest, body)
 }
@@ -133,9 +133,8 @@ type listResult struct {
 	IsTruncated           bool   `xml:"IsTruncated"`
 }
 
-// listPrefix walks every key under prefix. It is the other half of the
-// existence-check tradeoff: this costs one request per 1000 objects already in
-// the bucket, where head costs one per file being uploaded.
+// listPrefix costs one request per 1000 objects in the bucket, where head costs
+// one per digest asked about.
 func (s *s3) listPrefix(prefix string) (map[string]bool, error) {
 	have := map[string]bool{}
 	token := ""
@@ -200,4 +199,22 @@ func (s *s3) get(key string) ([]byte, error) {
 		return nil, fmt.Errorf("get %s: %s", key, resp.Status)
 	}
 	return b, nil
+}
+
+// delayed stands in for a network that is not loopback.
+type delayed struct {
+	d time.Duration
+	t http.RoundTripper
+}
+
+func (x delayed) RoundTrip(r *http.Request) (*http.Response, error) {
+	time.Sleep(x.d)
+	return x.t.RoundTrip(r)
+}
+
+func httpWithRTT(d time.Duration) *http.Client {
+	if d <= 0 {
+		return http.DefaultClient
+	}
+	return &http.Client{Transport: delayed{d, http.DefaultTransport}}
 }

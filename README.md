@@ -19,8 +19,8 @@ make down
 MinIO's images left Docker Hub in September 2026 and the quay.io replacement needs a licence, so
 `make up` pulls `cgr.dev/chainguard/minio`.
 
-`FILES=5000 MB=500 make tree` sets the shape of the tree. `RTT=40ms make bench` adds a fixed delay
-per request. `CHUNK=8388608` sets the size above which files are split.
+`FILES=5000 MB=500 make tree` sets the shape of the tree. `RTT=40ms make bench` adds that delay to every
+request the client and the server make. `CHUNK=8388608` sets the size above which files are split.
 
 ## Method
 
@@ -115,12 +115,12 @@ which hash to digests another file already covered.
 
 Changing one file moved 1,044,399 bytes in two PUTs, and only 19,427 of those are the file. The
 rest is the manifest, which lists all 5000 entries and is rewritten whole whenever anything
-changes. At this tree size the manifest is the floor on a warm upload and costs fifty times the
-edit that triggered it. Deleting a file shows the same floor with nothing else in it: one PUT,
-1,024,766 bytes, no files hashed, and no space reclaimed.
+changes. At this tree size the manifest is the floor on a warm upload, and it cost fifty times the
+edit that triggered it. The delete column is that floor on its own: one PUT, 1,024,766 bytes, no
+files hashed, no space reclaimed.
 
-The two warm runs differ by four orders of magnitude in bytes read, 19 KB against 527 MB, and
-upload the same amount. The cache buys reads and nothing else.
+The two warm runs read 19 KB and 527 MB and upload the same amount, so the cache saves reading
+and not uploading.
 
 ### Existence check
 

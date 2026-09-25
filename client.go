@@ -30,8 +30,7 @@ type manifest struct {
 	Files []fileEntry `json:"files"`
 }
 
-// chunkRef says where a chunk's bytes live, so the upload can re-read them
-// instead of holding the whole tree in memory.
+// chunkRef lets the upload re-read bytes rather than hold the tree in memory.
 type chunkRef struct {
 	path string
 	off  int64
@@ -51,8 +50,7 @@ type client struct {
 	http      *http.Client
 }
 
-// hashFile reads the file once and produces the whole-file digest alongside one
-// digest per chunk.
+// hashFile reads the file once for both the whole-file digest and the chunks.
 func hashFile(path string, chunkSize int64) (string, []string, []chunkRef, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -201,8 +199,8 @@ func (c *client) askMissing(digests []string) (map[string]target, int, error) {
 	return out.Upload, out.Checks, nil
 }
 
-// putSigned is the only thing the client does with S3: PUT the bytes to the URL
-// it was given, with the checksum it was told to send.
+// putSigned is all the client does with S3, using the URL and checksum it was
+// handed.
 func putSigned(hc *http.Client, url, checksum string, body []byte) (int, string, error) {
 	req, err := http.NewRequest("PUT", url, bytes.NewReader(body))
 	if err != nil {
@@ -270,8 +268,7 @@ func (c *client) uploadBlobs(want map[string]target, refs map[string]chunkRef, s
 	return ferr
 }
 
-// putOne uploads a single blob whose bytes are already in hand, used for the
-// manifest, which the client cannot write directly either.
+// putOne covers the manifest, which the client cannot write directly either.
 func (c *client) putOne(body []byte, st *stats) (string, error) {
 	h := sha256.Sum256(body)
 	d := hex.EncodeToString(h[:])
@@ -342,9 +339,8 @@ func inode(info os.FileInfo) uint64 {
 	return 0
 }
 
-// verify reassembles every file from its chunks and checks the result against
-// the digest the manifest recorded, which is the only way to know chunking and
-// ordering are right.
+// verify reassembles each file from its chunks and checks it against the digest
+// the manifest recorded, which tests chunk order as well as content.
 func verify(store *s3, id string) error {
 	b, err := store.get(blobKey(id))
 	if err != nil {

@@ -7,6 +7,7 @@ FILES    ?= 5000
 MB       ?= 500
 CHUNK    ?= 8388608
 STRATEGY ?= head
+RTT      ?= 0
 S3       := -endpoint $(ENDPOINT) -key $(KEY) -secret $(SECRET)
 
 .PHONY: up tree bench crossover tamper verify down clean
@@ -28,7 +29,7 @@ tree: out/cas
 	./out/cas tree -root $(ROOT) -files $(FILES) -mb $(MB)
 
 bench: out/cas
-	./out/cas bench $(S3) -root $(ROOT) -server $(SIGNER) -chunk $(CHUNK)
+	./out/cas bench $(S3) -root $(ROOT) -server $(SIGNER) -chunk $(CHUNK) -rtt $(RTT)
 
 crossover: out/cas
 	./out/cas crossover $(S3) -server $(SIGNER)

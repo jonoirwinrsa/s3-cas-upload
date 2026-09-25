@@ -7,9 +7,8 @@ import (
 	"path/filepath"
 )
 
-// genTree writes a tree with a heavy-tailed size distribution and a share of
-// duplicate files, so dedup is exercised inside one upload as well as across two.
-// The seed makes it reproducible.
+// genTree seeds a reproducible tree with a heavy-tailed size distribution and
+// some duplicate files, so dedup is exercised inside one upload as well as across two.
 func genTree(root string, files int, totalBytes int64, dupFrac float64, seed int64) error {
 	if err := os.RemoveAll(root); err != nil {
 		return err

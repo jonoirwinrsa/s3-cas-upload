@@ -27,8 +27,7 @@ const blobPrefix = "blobs/sha256/"
 
 func blobKey(digest string) string { return blobPrefix + digest }
 
-// missing returns the digests the store does not have, and how many S3
-// requests that answer cost.
+// missing also reports how many S3 requests the answer cost.
 func (sv *server) missing(digests []string, strategy string) ([]string, int, error) {
 	if strategy == "list" {
 		before := sv.s3.lists.Load()
