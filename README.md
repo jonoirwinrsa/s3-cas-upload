@@ -3,18 +3,21 @@
 Upload a source tree to S3 so that a repeat upload transfers only what changed, and so that a blob
 stored under a digest contains the bytes that hash to it.
 
-Runs against SeaweedFS in a container. No AWS account needed.
+Runs against MinIO in a container. No AWS account needed.
 
 ## Run it
 
 ```
-make up      # SeaweedFS S3 on :8333, signing server on :8080, bucket created
+make up      # MinIO on :9000, signing server on :8080, bucket created
 make tree    # generate a 500 MB test tree
 make bench   # four uploads under different conditions
 make crossover   # HeadObject vs ListObjectsV2 across tree sizes
 make tamper  # send bytes that do not match the digest they were signed for
 make down
 ```
+
+MinIO's images left Docker Hub in September 2026 and the quay.io replacement needs a licence, so
+`make up` pulls `cgr.dev/chainguard/minio`.
 
 `FILES=5000 MB=500 make tree` sets the shape of the tree. `RTT=40ms make bench` adds a fixed delay
 per request. `CHUNK=8388608` sets the size above which files are split.
@@ -36,8 +39,8 @@ answers the existence check, and returns one presigned PUT per missing digest.
 
 Steps 4 and 5 are reported separately so the cache is not credited with work the store did.
 
-SeaweedFS runs on loopback, so wall clock is reported after bytes and requests. `RTT` stands in
-for a network.
+MinIO runs on loopback, so wall clock is reported after bytes and requests. `RTT` stands in for a
+network.
 
 The cache key is path, size, mtime and inode. A file rewritten to the same length within one mtime
 tick is missed. Step 4 asserts that an ordinary edit is detected.
@@ -56,6 +59,20 @@ A client that holds credentials and sets the checksum itself gets no such guaran
 header against the body and nothing more. It does not know the key is a digest, and no bucket
 policy condition key covers checksums, so a client choosing both can store any bytes under any
 digest.
+
+The guarantee depends on the store enforcing signed headers, which not every S3 implementation
+does. `make tamper` checks four cases against whatever endpoint it is given:
+
+| Case | MinIO | SeaweedFS |
+|---|---|---|
+| correct bytes | accepted | accepted |
+| wrong bytes, signed checksum sent | rejected | rejected |
+| checksum header omitted | rejected | **accepted** |
+| checksum header replaced | rejected | rejected |
+
+SeaweedFS accepts a presigned request that leaves out a signed header, so a client can drop the
+checksum and store any bytes under any digest. AWS requires signed headers to be present, and
+MinIO matches it, which is why MinIO is the default target.
 
 SHA-256 is used because it is the only cryptographic hash S3 verifies. CRC32, CRC32C and
 CRC64NVME detect corruption but not deliberate substitution, SHA-1 is broken, and BLAKE3 is faster
